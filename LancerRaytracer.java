@@ -1,8 +1,15 @@
+import java.rmi.registry.Registry;
+import java.rmi.registry.LocateRegistry;
+import java.rmi.server.UnicastRemoteObject;
 import java.time.Duration;
 import java.time.Instant;
 import raytracer.Disp;
 import raytracer.Image;
 import raytracer.Scene;
+import java.util.List;
+import java.util.concurrent.atomic.AtomicInteger;
+
+
 
 public class LancerRaytracer {
 
@@ -14,7 +21,7 @@ public class LancerRaytracer {
         String fichier_description="simple.txt";
 
         // largeur et hauteur par défaut de l'image à reconstruire
-        int largeur = 512, hauteur = 512;
+        int largeur = 1048, hauteur = 1048;
         
         if(args.length > 0){
             fichier_description = args[0];
@@ -42,24 +49,53 @@ public class LancerRaytracer {
         int x0 = 0, y0 = 0;
         int l = largeur, h = hauteur;
                 
-        // Chronométrage du temps de calcul
-        Instant debut = Instant.now();
-        System.out.println("Calcul de l'image :\n - Coordonnées : "+x0+","+y0
-                           +"\n - Taille "+ largeur + "x" + hauteur);
 
-        int milieuLargeur = l/2;
-        int milieuHauteur = h/2;
+        // On demande la liste des machines dispo 
+        // On boucle est demande à chaque machine un nombre d'image en fonction du nombre de machines dispo
 
-        Image imageTL = scene.compute(x0, y0, milieuLargeur, milieuHauteur);
-        Image imageBR = scene.compute(milieuLargeur, milieuHauteur, milieuHauteur, milieuLargeur);
-        Instant fin = Instant.now();
-
-        long duree = Duration.between(debut, fin).toMillis();
+        String serv = "localhost";
+        int port = 1099;
         
-        System.out.println("Image calculée en :"+duree+" ms");
-        
-        // Affichage de l'image calculée
-        disp.setImage(imageTL, x0, y0);
-        disp.setImage(imageBR, milieuLargeur, milieuHauteur);
+        try {
+            int nbDecoupe = 100;
+            int fragmentHeight = hauteur / nbDecoupe;
+
+            // Obtenir les serveurs
+            Registry reg = LocateRegistry.getRegistry(serv, port);
+            ServiceServeur serveur = (ServiceServeur) reg.lookup("Calculateur");
+
+            // Demander au serveur la liste des clients de calcul
+            List<ServiceClient> clients = serveur.getClients();
+
+            // Index partagé pour attribuer les lignes
+            AtomicInteger currentIndex = new AtomicInteger(0);
+
+            // Lancer un thread par serveur
+            for (ServiceClient client : clients) {
+                new Thread(() -> {
+                    try {
+                        while (true) {
+                            int i = currentIndex.getAndIncrement();
+                            if (i >= nbDecoupe) break;
+
+                            int y = i * fragmentHeight;
+                            int nh = (i == nbDecoupe - 1) ? h - y : fragmentHeight;
+
+                            // Demander le calcul de l’image sur cette portion
+                            Image imageFragment = client.calculer(scene, 0, y, l, nh);
+
+                            // Afficher le résultat immédiatement
+                            disp.setImage(imageFragment, 0, y);
+                        }
+                    } catch (Exception e) {
+                        e.printStackTrace();
+                    }
+                }).start();
+            }
+
+        }catch(Exception e){
+            e.printStackTrace();
+        }
+
     }	
 }
