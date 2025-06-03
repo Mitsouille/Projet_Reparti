@@ -15,10 +15,9 @@ import java.util.concurrent.BlockingQueue;
 import java.util.concurrent.LinkedBlockingQueue;
 import java.util.concurrent.TimeUnit;
 
-
 public class CalculServeur implements ServiceServeur {
 
-    private final List<ServiceClient> listeClient = new ArrayList<>();
+    private List<ServiceClient> listeClient = new ArrayList<>();
 
     @Override
     public synchronized void enregistrerClient(ServiceClient var1) throws RemoteException {
@@ -27,7 +26,19 @@ public class CalculServeur implements ServiceServeur {
 
     @Override
     public synchronized List<ServiceClient> getClients() throws RemoteException {
-        // On renvoie la liste, ou une copie
-        return new ArrayList<>(listeClient);
+        List<ServiceClient> clientsValides = new ArrayList<>();
+        for (ServiceClient c : listeClient) {
+            try {
+                c.ping();
+                clientsValides.add(c);
+            } catch (RemoteException e) {
+                System.out.println("Client déconnecté détecté, on le retire de la liste.");
+            }
+        }
+
+        this.listeClient = clientsValides;
+
+        return new ArrayList<>(clientsValides);
     }
+
 }
